@@ -124,7 +124,7 @@ class ChatController extends Controller
         $request->validate(['message' => 'required']);
         $message = Message::findOrFail($id);
 
-        if ($message->sender_id !== auth()->id()) {
+        if ($message->sender_id != auth()->id()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -141,7 +141,7 @@ class ChatController extends Controller
     {
         $message = Message::findOrFail($id);
 
-        if ($message->sender_id !== auth()->id()) {
+        if ($message->sender_id != auth()->id()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
