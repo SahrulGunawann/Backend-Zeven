@@ -124,18 +124,37 @@ class PaymentController extends Controller
         // 2. Ambil Raw Body (data mentah)
         $rawBody = $request->getContent();
         
-        // 3. Verifikasi Signature (Hanya jika bukan di lokal/testing tertentu)
-        // Jika Anda ingin tetap bisa nembak lewat Postman saat dev, bisa tambahkan check APP_ENV
-        if (config('app.env') === 'production' || $signatureHeader) {
+        // 3. Verifikasi Signature
+        $isProduction = config('app.env') === 'production';
+
+        if ($isProduction) {
+            // DI PRODUCTION: Signature WAJIB ada dan valid
+            if (!$signatureHeader) {
+                Log::error('DompetX Security: Missing Signature Header in Production!');
+                return response()->json(['message' => 'Unauthorized: Missing Signature'], 401);
+            }
+
             $config = $this->getDompetXConfig();
             $expectedSignature = hash_hmac('sha256', $timestampHeader . '.' . $rawBody, $config['api_key']);
             
-            if ($signatureHeader && $signatureHeader !== $expectedSignature) {
+            if ($signatureHeader !== $expectedSignature) {
                 Log::warning('DompetX Security: Invalid Signature Attempt!', [
                     'received' => $signatureHeader,
-                    'expected' => $expectedSignature
+                    'expected' => $expectedSignature,
+                    'ip' => $request->ip()
                 ]);
-                return response()->json(['message' => 'Unauthorized Signature'], 401);
+                return response()->json(['message' => 'Unauthorized: Invalid Signature'], 401);
+            }
+        } else {
+            // DI LOCAL: Boleh tanpa signature untuk mempermudah testing manual (Postman)
+            if ($signatureHeader) {
+                $config = $this->getDompetXConfig();
+                $expectedSignature = hash_hmac('sha256', $timestampHeader . '.' . $rawBody, $config['api_key']);
+                if ($signatureHeader !== $expectedSignature) {
+                    return response()->json(['message' => 'Unauthorized Signature'], 401);
+                }
+            } else {
+                Log::info('DompetX Callback: Skipping signature check in local environment.');
             }
         }
 
