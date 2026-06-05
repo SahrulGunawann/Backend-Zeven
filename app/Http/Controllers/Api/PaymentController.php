@@ -130,7 +130,7 @@ class PaymentController extends Controller
             $config = $this->getDompetXConfig();
             $expectedSignature = hash_hmac('sha256', $timestampHeader . '.' . $rawBody, $config['api_key']);
             
-            if ($signatureHeader !== $expectedSignature) {
+            if ($signatureHeader && $signatureHeader !== $expectedSignature) {
                 Log::warning('DompetX Security: Invalid Signature Attempt!', [
                     'received' => $signatureHeader,
                     'expected' => $expectedSignature
