@@ -30,7 +30,7 @@ class PaymentController extends Controller
 
         $order = Order::with('buyer')->findOrFail($request->order_id);
 
-        if ($order->buyer_id !== auth()->id()) {
+        if ($order->buyer_id != auth()->id()) {
             return response()->json(['message' => 'Akses ditolak.'], 403);
         }
 
