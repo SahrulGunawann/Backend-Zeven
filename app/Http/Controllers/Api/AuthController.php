@@ -216,7 +216,8 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
-        // Cek apakah ada pesanan yang sedang berjalan
+        // 1. Cek apakah ada pesanan yang MASIH BERJALAN (Pending/Processed/Shipped)
+        // Jika masih ada transaksi aktif, tetap tidak boleh dihapus demi keamanan transaksi
         $activeOrders = Order::where(function($query) use ($user) {
             $query->where('user_id', $user->id)
                   ->orWhere('seller_id', $user->id);
@@ -224,28 +225,50 @@ class AuthController extends Controller
 
         if ($activeOrders > 0) {
             return response()->json([
-                'message' => 'Tidak dapat menghapus akun karena masih ada pesanan yang sedang berjalan.'
+                'message' => 'Tidak dapat menghapus akun karena masih ada pesanan yang sedang berjalan (aktif). Selesaikan transaksi Anda terlebih dahulu.'
             ], 422);
         }
 
-        // Hapus data terkait
-        if ($user->role === 'seller') {
-            Product::where('seller_id', $user->id)->delete();
+        try {
+            \Illuminate\Support\Facades\DB::beginTransaction();
+
+            // 2. Putuskan hubungan dengan data Pesanan (set NULL) agar record sejarah tetap ada tapi User bisa dihapus
+            // Tanpa ini, Database akan menolak (Restrict) penghapusan User jika ada ID-nya di tabel orders
+            Order::where('user_id', $user->id)->update(['user_id' => null]);
+            Order::where('seller_id', $user->id)->update(['seller_id' => null]);
+
+            // 3. Hapus data terkait Seller jika role-nya seller
+            if ($user->role === 'seller') {
+                // Hapus produk
+                Product::where('seller_id', $user->id)->delete();
+            }
+
+            // 4. Hapus data pendukung lainnya
+            Wishlist::where('user_id', $user->id)->delete();
+            Cart::where('user_id', $user->id)->delete();
+            Address::where('user_id', $user->id)->delete();
+
+            // 5. Hapus Avatar
+            if ($user->profile_image) {
+                Storage::disk('public')->delete($user->profile_image);
+            }
+
+            // 6. Hapus Token & Akun User
+            $user->tokens()->delete();
+            $user->delete();
+
+            \Illuminate\Support\Facades\DB::commit();
+
+            return response()->json([
+                'message' => 'Akun Anda berhasil dihapus secara permanen.'
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            return response()->json([
+                'message' => 'Gagal menghapus akun: Terjadi masalah pada database. Silakan hubungi admin.',
+                'debug' => $e->getMessage() // Ini akan membantu kita tau error aslinya apa
+            ], 500);
         }
-
-        Wishlist::where('user_id', $user->id)->delete();
-        Cart::where('user_id', $user->id)->delete();
-        Address::where('user_id', $user->id)->delete();
-
-        if ($user->profile_image) {
-            Storage::disk('public')->delete($user->profile_image);
-        }
-
-        $user->tokens()->delete();
-        $user->delete();
-
-        return response()->json([
-            'message' => 'Akun Anda berhasil dihapus secara permanen.'
-        ]);
     }
 }
