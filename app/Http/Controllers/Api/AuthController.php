@@ -4,8 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\Wishlist;
+use App\Models\Cart;
+use App\Models\Address;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
@@ -188,7 +194,7 @@ class AuthController extends Controller
     {
         $user = auth()->user();
         if ($user->profile_image) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($user->profile_image);
+            Storage::disk('public')->delete($user->profile_image);
             $user->profile_image = null;
             $user->save();
         }
@@ -211,7 +217,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         // Cek apakah ada pesanan yang sedang berjalan
-        $activeOrders = \App\Models\Order::where(function($query) use ($user) {
+        $activeOrders = Order::where(function($query) use ($user) {
             $query->where('user_id', $user->id)
                   ->orWhere('seller_id', $user->id);
         })->whereIn('status', ['pending', 'processed', 'shipped'])->count();
@@ -224,15 +230,15 @@ class AuthController extends Controller
 
         // Hapus data terkait
         if ($user->role === 'seller') {
-            \App\Models\Product::where('seller_id', $user->id)->delete();
+            Product::where('seller_id', $user->id)->delete();
         }
 
-        \App\Models\Wishlist::where('user_id', $user->id)->delete();
-        \App\Models\Cart::where('user_id', $user->id)->delete();
-        \App\Models\Address::where('user_id', $user->id)->delete();
+        Wishlist::where('user_id', $user->id)->delete();
+        Cart::where('user_id', $user->id)->delete();
+        Address::where('user_id', $user->id)->delete();
 
         if ($user->profile_image) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($user->profile_image);
+            Storage::disk('public')->delete($user->profile_image);
         }
 
         $user->tokens()->delete();
