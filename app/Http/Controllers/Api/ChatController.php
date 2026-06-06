@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
@@ -84,7 +85,7 @@ class ChatController extends Controller
             $contactIds = array_unique(array_merge($senders, $receivers));
         }
 
-        $contacts = \App\Models\User::whereIn('id', $contactIds)
+        $contacts = User::whereIn('id', $contactIds)
             ->get()
             ->map(function ($contact) use ($userId, $user) {
                 // Ambil pesan terakhir yang melibatkan $userId dan $contact
