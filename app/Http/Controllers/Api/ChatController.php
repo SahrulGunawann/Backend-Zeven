@@ -17,12 +17,33 @@ class ChatController extends Controller
             'message' => 'required'
         ]);
 
+        $sender = auth()->user();
         $message = Message::create([
-            'sender_id' => auth()->id(),
+            'sender_id' => $sender->id,
             'receiver_id' => $request->receiver_id,
             'message' => $request->message,
             'is_read' => 0
         ]);
+
+        // KIRIM NOTIFIKASI KE PENERIMA
+        try {
+            $receiver = User::find($request->receiver_id);
+            if ($receiver && $receiver->fcm_token) {
+                $firebase = new \App\Services\FirebaseService();
+                $firebase->sendNotification(
+                    $receiver->fcm_token,
+                    "Pesan Baru dari " . $sender->name,
+                    Str::limit($request->message, 50),
+                    [
+                        'type' => 'chat',
+                        'sender_id' => (string)$sender->id,
+                        'message_id' => (string)$message->id
+                    ]
+                );
+            }
+        } catch (\Exception $e) {
+            \Log::error("Failed to send Chat FCM: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'Pesan berhasil dikirim',
