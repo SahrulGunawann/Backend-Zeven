@@ -205,6 +205,41 @@ class AuthController extends Controller
         $user->fcm_token = $request->fcm_token;
         $user->save();
 
-        return response()->json(['message' => 'FCM Token updated successfully']);
+    }
+    public function deleteAccount(Request $request)
+    {
+        $user = $request->user();
+
+        // Cek apakah ada pesanan yang sedang berjalan
+        $activeOrders = \App\Models\Order::where(function($query) use ($user) {
+            $query->where('user_id', $user->id)
+                  ->orWhere('seller_id', $user->id);
+        })->whereIn('status', ['pending', 'processed', 'shipped'])->count();
+
+        if ($activeOrders > 0) {
+            return response()->json([
+                'message' => 'Tidak dapat menghapus akun karena masih ada pesanan yang sedang berjalan.'
+            ], 422);
+        }
+
+        // Hapus data terkait
+        if ($user->role === 'seller') {
+            \App\Models\Product::where('seller_id', $user->id)->delete();
+        }
+
+        \App\Models\Wishlist::where('user_id', $user->id)->delete();
+        \App\Models\Cart::where('user_id', $user->id)->delete();
+        \App\Models\Address::where('user_id', $user->id)->delete();
+
+        if ($user->profile_image) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($user->profile_image);
+        }
+
+        $user->tokens()->delete();
+        $user->delete();
+
+        return response()->json([
+            'message' => 'Akun Anda berhasil dihapus secara permanen.'
+        ]);
     }
 }

@@ -57,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [AuthController::class, 'updateProfile']);
     Route::post('/profile/avatar', [AuthController::class, 'updateAvatar']);
     Route::delete('/profile/avatar', [AuthController::class, 'deleteAvatar']);
+    Route::delete('/profile', [AuthController::class, 'deleteAccount']);
     Route::post('/vouchers/check', [VoucherController::class, 'check']);
     Route::get('/vouchers', [VoucherController::class, 'index']);
     Route::post('/update-fcm-token', [AuthController::class, 'updateFcmToken']);
