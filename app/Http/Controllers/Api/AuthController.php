@@ -5,13 +5,18 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Wishlist;
 use App\Models\Cart;
 use App\Models\Address;
+use App\Models\Transaction;
+use App\Models\Message;
+use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
@@ -230,44 +235,61 @@ class AuthController extends Controller
         }
 
         try {
-            \Illuminate\Support\Facades\DB::beginTransaction();
+            DB::beginTransaction();
 
-            // 2. Putuskan hubungan dengan data Pesanan (set NULL) agar record sejarah tetap ada tapi User bisa dihapus
-            // Tanpa ini, Database akan menolak (Restrict) penghapusan User jika ada ID-nya di tabel orders
-            Order::where('user_id', $user->id)->update(['user_id' => null]);
-            Order::where('seller_id', $user->id)->update(['seller_id' => null]);
+            // 2. Hapus data Pesanan & Item Pesanan (Hard Delete)
+            // Cari semua order ID milik user (sebagai buyer atau seller)
+            $orderIds = Order::where('user_id', $user->id)
+                             ->orWhere('seller_id', $user->id)
+                             ->pluck('id');
 
-            // 3. Hapus data terkait Seller jika role-nya seller
+            if ($orderIds->count() > 0) {
+                OrderItem::whereIn('order_id', $orderIds)->delete();
+                Order::whereIn('id', $orderIds)->delete();
+            }
+
+            // 3. Hapus data Chat/Pesan
+            Message::where('sender_id', $user->id)
+                   ->orWhere('receiver_id', $user->id)
+                   ->delete();
+
+            // 4. Hapus Produk & Review jika Seller
             if ($user->role === 'seller') {
-                // Hapus produk
+                $productIds = Product::where('seller_id', $user->id)->pluck('id');
+                Review::whereIn('product_id', $productIds)->delete();
                 Product::where('seller_id', $user->id)->delete();
             }
 
-            // 4. Hapus data pendukung lainnya
+            // 5. Hapus Review yang ditulis oleh User (sebagai buyer)
+            Review::where('user_id', $user->id)->delete();
+
+            // 6. Hapus data pendukung lainnya
+            Transaction::where('user_id', $user->id)->delete();
             Wishlist::where('user_id', $user->id)->delete();
             Cart::where('user_id', $user->id)->delete();
             Address::where('user_id', $user->id)->delete();
 
-            // 5. Hapus Avatar
+            // 7. Hapus Avatar
             if ($user->profile_image) {
                 Storage::disk('public')->delete($user->profile_image);
             }
 
-            // 6. Hapus Token & Akun User
+            // 8. Hapus Token & Akun User
             $user->tokens()->delete();
             $user->delete();
 
-            \Illuminate\Support\Facades\DB::commit();
+            DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Akun Anda berhasil dihapus secara permanen.'
             ]);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\DB::rollBack();
+            DB::rollBack();
             return response()->json([
-                'message' => 'Gagal menghapus akun: Terjadi masalah pada database. Silakan hubungi admin.',
-                'debug' => $e->getMessage() // Ini akan membantu kita tau error aslinya apa
+                'success' => false,
+                'message' => 'Gagal menghapus akun: ' . $e->getMessage()
             ], 500);
         }
     }
