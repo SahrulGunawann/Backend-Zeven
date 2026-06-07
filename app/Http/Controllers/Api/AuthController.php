@@ -294,10 +294,9 @@ class AuthController extends Controller
             DB::rollBack();
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
             
-            // Kembalikan error dalam format JSON yang bersih
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal sistem: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan sistem saat menghapus akun. Silakan hubungi dukungan pelanggan.'
             ], 500);
         }
     }
