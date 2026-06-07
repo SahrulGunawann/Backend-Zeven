@@ -220,16 +220,18 @@ class AuthController extends Controller
     public function deleteAccount(Request $request)
     {
         $user = $request->user();
+        $userId = $user->id;
 
         // 1. Cek apakah ada pesanan yang MASIH BERJALAN (Pending/Processed/Shipped)
-        // Jika masih ada transaksi aktif, tetap tidak boleh dihapus demi keamanan transaksi
-        $activeOrders = Order::where(function($query) use ($user) {
-            $query->where('user_id', $user->id)
-                  ->orWhere('seller_id', $user->id);
+        // Menggunakan buyer_id sesuai temuan error di database
+        $activeOrders = DB::table('orders')->where(function($query) use ($userId) {
+            $query->where('buyer_id', $userId)
+                  ->orWhere('seller_id', $userId);
         })->whereIn('status', ['pending', 'processed', 'shipped'])->count();
 
         if ($activeOrders > 0) {
             return response()->json([
+                'success' => false,
                 'message' => 'Tidak dapat menghapus akun karena masih ada pesanan yang sedang berjalan (aktif). Selesaikan transaksi Anda terlebih dahulu.'
             ], 422);
         }
@@ -237,48 +239,48 @@ class AuthController extends Controller
         try {
             DB::beginTransaction();
             
-            // MATIKAN Pengecekan Foreign Key agar tidak ada tabel yang menghalangi
+            // 1. Matikan Pengecekan Foreign Key
             DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
-            // 1. Hapus data Pesanan & Item Pesanan
-            $orderIds = Order::where('user_id', $user->id)
-                             ->orWhere('seller_id', $user->id)
-                             ->pluck('id');
+            // 2. Hapus data Pesanan & Item (Gunakan buyer_id)
+            $orderIds = DB::table('orders')
+                          ->where('buyer_id', $userId)
+                          ->orWhere('seller_id', $userId)
+                          ->pluck('id');
 
             if ($orderIds->count() > 0) {
-                OrderItem::whereIn('order_id', $orderIds)->delete();
-                Order::whereIn('id', $orderIds)->delete();
+                DB::table('order_items')->whereIn('order_id', $orderIds)->delete();
+                DB::table('orders')->whereIn('id', $orderIds)->delete();
             }
 
-            // 2. Hapus data Chat/Pesan
-            Message::where('sender_id', $user->id)
-                   ->orWhere('receiver_id', $user->id)
-                   ->delete();
+            // 3. Hapus data Chat
+            DB::table('messages')->where('sender_id', $userId)->orWhere('receiver_id', $userId)->delete();
 
-            // 3. Hapus Produk & Review jika Seller
-            if ($user->role === 'seller') {
-                $productIds = Product::where('seller_id', $user->id)->pluck('id');
-                Review::whereIn('product_id', $productIds)->delete();
-                Product::where('seller_id', $user->id)->delete();
+            // 4. Hapus Produk & Review
+            $productIds = DB::table('products')->where('seller_id', $userId)->pluck('id');
+            if ($productIds->count() > 0) {
+                DB::table('reviews')->whereIn('product_id', $productIds)->delete();
+                DB::table('products')->whereIn('id', $productIds)->delete();
             }
 
-            // 4. Hapus Review, Transaction, Wishlist, Cart, Address
-            Review::where('user_id', $user->id)->delete();
-            Transaction::where('user_id', $user->id)->delete();
-            Wishlist::where('user_id', $user->id)->delete();
-            Cart::where('user_id', $user->id)->delete();
-            Address::where('user_id', $user->id)->delete();
+            // 5. Hapus data pendukung lainnya (Gunakan try-catch kecil per tabel agar jika tabel tidak ada tidak bikin crash)
+            $tables = ['reviews', 'transactions', 'wishlists', 'carts', 'addresses'];
+            foreach ($tables as $table) {
+                try {
+                    DB::table($table)->where('user_id', $userId)->delete();
+                } catch (\Exception $e) { /* Abaikan jika tabel tidak ada */ }
+            }
 
-            // 5. Hapus Avatar
+            // 6. Hapus Avatar
             if ($user->profile_image) {
                 Storage::disk('public')->delete($user->profile_image);
             }
 
-            // 6. Hapus Token & Akun User
+            // 7. Hapus Token & Akun User
             $user->tokens()->delete();
             $user->delete();
 
-            // HIDUPKAN KEMBALI Pengecekan Foreign Key
+            // 8. Hidupkan kembali pengecekan
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
             
             DB::commit();
@@ -290,12 +292,12 @@ class AuthController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            // Pastikan foreign key hidup kembali jika gagal
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
             
+            // Kembalikan error dalam format JSON yang bersih
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus akun: ' . $e->getMessage() . ' (File: ' . basename($e->getFile()) . ' Line: ' . $e->getLine() . ')'
+                'message' => 'Gagal sistem: ' . $e->getMessage()
             ], 500);
         }
     }
