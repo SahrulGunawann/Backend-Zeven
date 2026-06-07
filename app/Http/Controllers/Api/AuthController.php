@@ -295,7 +295,7 @@ class AuthController extends Controller
             
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus akun: ' . $e->getMessage()
+                'message' => 'Gagal menghapus akun: ' . $e->getMessage() . ' (File: ' . basename($e->getFile()) . ' Line: ' . $e->getLine() . ')'
             ], 500);
         }
     }
