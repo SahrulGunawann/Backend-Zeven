@@ -236,9 +236,11 @@ class AuthController extends Controller
 
         try {
             DB::beginTransaction();
+            
+            // MATIKAN Pengecekan Foreign Key agar tidak ada tabel yang menghalangi
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
-            // 2. Hapus data Pesanan & Item Pesanan (Hard Delete)
-            // Cari semua order ID milik user (sebagai buyer atau seller)
+            // 1. Hapus data Pesanan & Item Pesanan
             $orderIds = Order::where('user_id', $user->id)
                              ->orWhere('seller_id', $user->id)
                              ->pluck('id');
@@ -248,36 +250,37 @@ class AuthController extends Controller
                 Order::whereIn('id', $orderIds)->delete();
             }
 
-            // 3. Hapus data Chat/Pesan
+            // 2. Hapus data Chat/Pesan
             Message::where('sender_id', $user->id)
                    ->orWhere('receiver_id', $user->id)
                    ->delete();
 
-            // 4. Hapus Produk & Review jika Seller
+            // 3. Hapus Produk & Review jika Seller
             if ($user->role === 'seller') {
                 $productIds = Product::where('seller_id', $user->id)->pluck('id');
                 Review::whereIn('product_id', $productIds)->delete();
                 Product::where('seller_id', $user->id)->delete();
             }
 
-            // 5. Hapus Review yang ditulis oleh User (sebagai buyer)
+            // 4. Hapus Review, Transaction, Wishlist, Cart, Address
             Review::where('user_id', $user->id)->delete();
-
-            // 6. Hapus data pendukung lainnya
             Transaction::where('user_id', $user->id)->delete();
             Wishlist::where('user_id', $user->id)->delete();
             Cart::where('user_id', $user->id)->delete();
             Address::where('user_id', $user->id)->delete();
 
-            // 7. Hapus Avatar
+            // 5. Hapus Avatar
             if ($user->profile_image) {
                 Storage::disk('public')->delete($user->profile_image);
             }
 
-            // 8. Hapus Token & Akun User
+            // 6. Hapus Token & Akun User
             $user->tokens()->delete();
             $user->delete();
 
+            // HIDUPKAN KEMBALI Pengecekan Foreign Key
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            
             DB::commit();
 
             return response()->json([
@@ -287,6 +290,9 @@ class AuthController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            // Pastikan foreign key hidup kembali jika gagal
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus akun: ' . $e->getMessage()
