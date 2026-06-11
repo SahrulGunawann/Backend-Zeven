@@ -198,7 +198,10 @@ class PaymentController extends Controller
             $orderStatus = 'processed'; // Otomatis ke 'Diproses' jika bayar sukses
         } elseif (in_array($status, ['FAILED', 'EXPIRED', 'CANCELLED', 'CANCELED'])) {
             $paymentStatus = 'failed';
-            $orderStatus = 'canceled';
+            if ($order->status !== 'canceled') {
+                $orderStatus = 'canceled';
+                $order->restoreStockAndVoucher();
+            }
         }
 
         $transaction = Transaction::where('order_id', $order->id)->first();
@@ -271,6 +274,12 @@ class PaymentController extends Controller
                         if ($status === 'SUCCESS' || $status === 'PAID') {
                             $updateData['payment_status'] = 'paid';
                             $order->update(['status' => 'processed']);
+                        } elseif (in_array($status, ['FAILED', 'EXPIRED', 'CANCELLED', 'CANCELED'])) {
+                            $updateData['payment_status'] = 'failed';
+                            if ($order->status !== 'canceled') {
+                                $order->update(['status' => 'canceled']);
+                                $order->restoreStockAndVoucher();
+                            }
                         }
 
                         if ($actualMethod) {
