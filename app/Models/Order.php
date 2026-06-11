@@ -39,4 +39,9 @@ class Order extends Model
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
+
+    public function voucher()
+    {
+        return $this->belongsTo(Voucher::class);
+    }
 }

@@ -89,6 +89,11 @@ class OrderController extends Controller
         $order->status = $request->status;
         $order->save();
 
+        // Jika dibatalkan, kembalikan stok dan voucher
+        if ($order->status === 'canceled' && $oldStatus !== 'canceled') {
+            $this->restoreStockAndVoucher($order);
+        }
+
         // KIRIM NOTIFIKASI FCM KE BUYER JIKA STATUS BERUBAH JADI DIKIRIM (SHIPPED)
         if ($order->status === 'shipped' && $oldStatus !== 'shipped') {
             try {
@@ -181,6 +186,9 @@ class OrderController extends Controller
         $order->status = 'canceled';
         $order->save();
 
+        // Kembalikan stok dan voucher
+        $this->restoreStockAndVoucher($order);
+
         if ($order->transaction) {
             $order->transaction->update(['payment_status' => 'failed']);
         }
@@ -189,5 +197,23 @@ class OrderController extends Controller
             'message' => 'Pesanan berhasil dibatalkan',
             'order' => $order
         ]);
+    }
+
+    private function restoreStockAndVoucher(Order $order)
+    {
+        // 1. Kembalikan stok produk
+        foreach ($order->items as $item) {
+            if ($item->product) {
+                $item->product->increment('stock', $item->quantity);
+            }
+        }
+
+        // 2. Kembalikan kuota voucher jika ada
+        if ($order->voucher_id) {
+            $voucher = $order->voucher;
+            if ($voucher && $voucher->used > 0) {
+                $voucher->decrement('used');
+            }
+        }
     }
 }
