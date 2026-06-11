@@ -80,6 +80,8 @@ class FirebaseService
                     'priority' => 'high',
                     'notification' => [
                         'sound' => 'default',
+                        'icon' => 'ic_notification',
+                        'color' => '#047857',
                         'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
                     ],
                 ],
