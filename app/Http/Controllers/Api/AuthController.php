@@ -147,6 +147,7 @@ class AuthController extends Controller
             'current_password' => 'required_with:password',
             'password' => 'nullable|min:6|confirmed',
             'phone' => 'nullable|string|max:20',
+            'avatar_base64' => 'nullable|string',
         ], [
             'name.required' => 'Nama lengkap wajib diisi.',
             'email.required' => 'Email wajib diisi.',
@@ -166,6 +167,30 @@ class AuthController extends Controller
                 ], 422);
             }
             $user->password = bcrypt($request->password);
+        }
+
+        // Proses upload avatar Base64 jika ada gambar baru yang dipilih
+        if ($request->filled('avatar_base64')) {
+            $base64Image = $request->avatar_base64;
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Image, $type)) {
+                $image = substr($base64Image, strpos($base64Image, ',') + 1);
+                $type = strtolower($type[1]); // png, jpg, jpeg, webp
+
+                if (in_array($type, ['jpg', 'jpeg', 'png', 'webp'])) {
+                    $image = base64_decode($image);
+                    if ($image !== false) {
+                        // Hapus avatar lama dari storage jika ada
+                        if ($user->profile_image) {
+                            $oldPath = str_replace(asset('storage') . '/', '', $user->getRawOriginal('profile_image'));
+                            Storage::disk('public')->delete($oldPath);
+                        }
+
+                        $fileName = 'avatar_' . time() . '_' . uniqid() . '.' . $type;
+                        Storage::disk('public')->put('avatars/' . $fileName, $image);
+                        $user->profile_image = 'avatars/' . $fileName;
+                    }
+                }
+            }
         }
 
         $user->name = $request->name;
